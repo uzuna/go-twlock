@@ -14,8 +14,16 @@ import (
 func TestCache(t *testing.T) {
 
 	length := 100000 * 6
-	// cacheLifeCount := length / 10
-	c := twlock.NewMemoryRequest()
+	cacheLifeCount := length / 10
+
+	// cache option
+	var opts []twlock.MemoryCacheOption
+
+	opts = append(opts,
+		twlock.WithLifeCount(cacheLifeCount),
+	)
+
+	c := twlock.NewMemoryRequest(opts...)
 	o := &CopyOrigin{
 		mutex: new(sync.Mutex),
 	}
@@ -45,7 +53,7 @@ func TestCache(t *testing.T) {
 	}
 	wg.Wait()
 
-	assert.Equal(t, 1, o.counter)
+	assert.Equal(t, 10, o.counter)
 }
 
 type waitRequest struct {
