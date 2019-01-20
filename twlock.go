@@ -9,23 +9,22 @@ import (
 // あるリソースへのアクセスを表現するInterface
 type ResourceFunc func(ctx context.Context, req interface{}, res interface{}) (ok bool, err error)
 
-// リクエストの管理グループ名を返す
-type GroupFunc func(req interface{}) string
-
 type CacheStore interface {
-	Get(ctx context.Context, req interface{}, res interface{}) (ok bool, err error)
-	Set(req interface{}, res interface{}) error
+	Get(ctx context.Context, req Named, res interface{}) (ok bool, err error)
+	Set(req Named, res interface{}) error
 }
 
 func WriteToInterface(res interface{}, v interface{}) error {
 	x := reflect.ValueOf(v)
+	if x.Kind() == reflect.Ptr {
+		x = x.Elem()
+	}
 	reflect.ValueOf(res).Elem().Set(x)
 	return nil
 }
 
-func NewTWLock(g GroupFunc, c CacheStore, o ResourceFunc) *TWLock {
+func NewTWLock(c CacheStore, o ResourceFunc) *TWLock {
 	return &TWLock{
-		groupFunc:  g,
 		cacheFunc:  c,
 		originFunc: o,
 		originLock: make(map[string]struct{}),
@@ -35,7 +34,6 @@ func NewTWLock(g GroupFunc, c CacheStore, o ResourceFunc) *TWLock {
 }
 
 type TWLock struct {
-	groupFunc  GroupFunc
 	cacheFunc  CacheStore
 	originFunc ResourceFunc
 	originLock map[string]struct{}      // Mutex for originFunc
@@ -44,9 +42,9 @@ type TWLock struct {
 }
 
 // Request Sequence
-func (l *TWLock) In(ctx context.Context, req interface{}, res interface{}) error {
+func (l *TWLock) In(ctx context.Context, req Named, res interface{}) error {
 	// get cache group
-	grName := l.groupFunc(req)
+	grName := req.Name()
 
 	// create cache lock
 	cl, ok := l.cacheLock[grName]
