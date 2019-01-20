@@ -2,18 +2,25 @@ package twlock
 
 import (
 	"context"
+	"reflect"
 	"sync"
 )
 
 // あるリソースへのアクセスを表現するInterface
-type ResourceFunc func(ctx context.Context, req interface{}) (res interface{}, ok bool, err error)
+type ResourceFunc func(ctx context.Context, req interface{}, res interface{}) (ok bool, err error)
 
 // リクエストの管理グループ名を返す
 type GroupFunc func(req interface{}) string
 
 type CacheStore interface {
-	Get(ctx context.Context, req interface{}) (res interface{}, ok bool, err error)
+	Get(ctx context.Context, req interface{}, res interface{}) (ok bool, err error)
 	Set(req interface{}, res interface{}) error
+}
+
+func WriteToInterface(res interface{}, v interface{}) error {
+	x := reflect.ValueOf(v)
+	reflect.ValueOf(res).Elem().Set(x)
+	return nil
 }
 
 func NewTWLock(g GroupFunc, c CacheStore, o ResourceFunc) *TWLock {
@@ -31,13 +38,13 @@ type TWLock struct {
 	groupFunc  GroupFunc
 	cacheFunc  CacheStore
 	originFunc ResourceFunc
-	originLock map[string]struct{}
-	cacheLock  map[string]*sync.RWMutex
-	mux        *sync.Mutex
+	originLock map[string]struct{}      // Mutex for originFunc
+	cacheLock  map[string]*sync.RWMutex // Mutex for cacheFunc
+	mux        *sync.Mutex              // Mutex for access originLock
 }
 
 // Request Sequence
-func (l *TWLock) In(ctx context.Context, req interface{}) (interface{}, error) {
+func (l *TWLock) In(ctx context.Context, req interface{}, res interface{}) error {
 	// get cache group
 	grName := l.groupFunc(req)
 
@@ -55,14 +62,14 @@ func (l *TWLock) In(ctx context.Context, req interface{}) (interface{}, error) {
 	for {
 		// cache read and wait
 		cl.RLock()
-		res, ok, err := l.cacheFunc.Get(ctx, req)
+		ok, err := l.cacheFunc.Get(ctx, req, res)
 		if err != nil {
 			cl.RUnlock()
-			return nil, err
+			return err
 		}
 		if ok {
 			cl.RUnlock()
-			return res, nil
+			return nil
 		}
 
 		// When has not cache data
@@ -79,22 +86,24 @@ func (l *TWLock) In(ctx context.Context, req interface{}) (interface{}, error) {
 		cl.RUnlock()
 		break
 	}
-	// Origin request
+	// Request to Origin
 	cl.Lock()
 	defer func() {
 		cl.Unlock()
+		l.mux.Lock()
 		delete(l.originLock, grName)
+		l.mux.Unlock()
 	}()
 
 	// origin route確認
-	res, ok, err := l.originFunc(ctx, req)
+	ok, err := l.originFunc(ctx, req, res)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if !ok {
-		return res, nil
+		return nil
 	}
 	// set cache
 	err = l.cacheFunc.Set(req, res)
-	return res, err
+	return err
 }

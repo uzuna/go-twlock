@@ -17,7 +17,9 @@ func TestTway(t *testing.T) {
 		return x.Name
 	}
 
-	c := newDummyCache()
+	length := 100000 * 6
+	cacheLifeCount := length / 10
+	c := newDummyCache(cacheLifeCount)
 	o := &DummyOrigin{
 		mutex: new(sync.Mutex),
 	}
@@ -29,24 +31,27 @@ func TestTway(t *testing.T) {
 		defer wg.Done()
 		req := &DummyRequest{
 			Name: "X",
-			Wait: time.Millisecond * time.Duration(i) * 100,
+			Wait: time.Millisecond,
 			Has:  true,
 		}
 		ctx := context.Background()
-		res, err := l.In(ctx, req)
-		if err != nil {
+		var res int
+		err := l.In(ctx, req, &res)
+		if err != nil && res < 1 {
 			log.Println(res, err)
+			panic(err)
 		}
 	}
-	length := 10000
+
+	ogirinCountExpect := length / cacheLifeCount
 	for i := 0; i < length; i++ {
 		wg.Add(1)
 		go f(i)
 	}
 	wg.Wait()
 
-	assert.Equal(t, length, c.counter)
-	assert.Equal(t, 1, o.counter)
+	assert.Equal(t, length, c.counter+o.counter)
+	assert.Equal(t, ogirinCountExpect, o.counter)
 
 	// table := []*DummyRequest{
 	// 	&DummyRequest{
@@ -63,19 +68,21 @@ func TestTway(t *testing.T) {
 	// }
 }
 
-func newDummyCache() *DummyCache {
+func newDummyCache(lifeCount int) *DummyCache {
 	return &DummyCache{
-		data:      make(map[string]*DummyRequest),
-		mutex:     new(sync.Mutex),
-		cacheLock: new(sync.RWMutex),
+		data:        make(map[string]*DummyRequest),
+		accessCount: make(map[string]int),
+		lifeCount:   lifeCount,
+		cacheLock:   new(sync.RWMutex),
 	}
 }
 
 type DummyCache struct {
-	data      map[string]*DummyRequest
-	mutex     *sync.Mutex
-	cacheLock *sync.RWMutex
-	counter   int
+	data        map[string]*DummyRequest
+	accessCount map[string]int
+	lifeCount   int
+	cacheLock   *sync.RWMutex
+	counter     int
 }
 
 func (d *DummyCache) Set(req interface{}, res interface{}) error {
@@ -83,26 +90,34 @@ func (d *DummyCache) Set(req interface{}, res interface{}) error {
 	d.cacheLock.Lock()
 	d.data[x.Name] = x
 	d.cacheLock.Unlock()
-	go func() {
-		log.Println("Cache")
-		time.Sleep(time.Millisecond)
-		d.cacheLock.Lock()
-		delete(d.data, x.Name)
-		d.cacheLock.Unlock()
-	}()
 	return nil
 }
-func (d *DummyCache) Get(ctx context.Context, req interface{}) (v interface{}, ok bool, err error) {
-	d.mutex.Lock()
-	d.counter++
-	d.mutex.Unlock()
+func (d *DummyCache) Get(ctx context.Context, req interface{}, res interface{}) (ok bool, err error) {
 	x := req.(*DummyRequest)
+
 	d.cacheLock.RLock()
-	defer d.cacheLock.RUnlock()
-	if v, ok := d.data[x.Name]; ok {
-		return v, true, nil
+	if x, ok := d.data[x.Name]; ok {
+		d.cacheLock.RUnlock()
+		// ReCheck
+		d.cacheLock.Lock()
+		if _, ok := d.data[x.Name]; !ok {
+			d.cacheLock.Unlock()
+			return ok, nil
+		}
+		d.counter++
+		d.accessCount[x.Name]++
+		if d.accessCount[x.Name] > d.lifeCount {
+			log.Println("UnCache", d.counter)
+			d.accessCount[x.Name] = 0
+			delete(d.data, x.Name)
+		}
+		d.cacheLock.Unlock()
+
+		err := twlock.WriteToInterface(res, int(x.Wait))
+		return true, err
 	}
-	return nil, ok, nil
+	d.cacheLock.RUnlock()
+	return ok, nil
 }
 
 type DummyRequest struct {
@@ -117,20 +132,21 @@ type DummyOrigin struct {
 	counter int
 }
 
-func (d *DummyOrigin) Get(ctx context.Context, v interface{}) (interface{}, bool, error) {
+func (d *DummyOrigin) Get(ctx context.Context, req interface{}, res interface{}) (bool, error) {
 	d.mutex.Lock()
 	d.counter++
 	d.mutex.Unlock()
-	x := v.(*DummyRequest)
+	x := req.(*DummyRequest)
 	if x.Error != nil {
-		return nil, false, x.Error
+		return false, x.Error
 	}
 
 	timer := time.NewTimer(x.Wait)
 	select {
 	case <-ctx.Done():
-		return nil, false, ctx.Err()
+		return false, ctx.Err()
 	case <-timer.C:
-		return x.Wait, x.Has, nil
+		err := twlock.WriteToInterface(res, int(x.Wait))
+		return x.Has, err
 	}
 }
