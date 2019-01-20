@@ -31,7 +31,7 @@ func TestTway(t *testing.T) {
 		}
 		ctx := context.Background()
 		var res DummyRequest
-		err := l.In(ctx, req, &res)
+		err := l.Serve(ctx, req, &res)
 		if err != nil && res.Wait < 1 {
 			log.Println(res, err)
 			t.Fail()

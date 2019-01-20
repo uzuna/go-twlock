@@ -2,27 +2,22 @@ package twlock
 
 import (
 	"context"
-	"reflect"
 	"sync"
 )
 
 // あるリソースへのアクセスを表現するInterface
 type ResourceFunc func(ctx context.Context, req interface{}, res interface{}) (ok bool, err error)
 
+// CacheStore is cache module interface
+// Must request has "name" for identify
+// Cache module store the responce from origin by identity of "name"
 type CacheStore interface {
+	// When has not data then return false into ok variable
 	Get(ctx context.Context, req Named, res interface{}) (ok bool, err error)
 	Set(req Named, res interface{}) error
 }
 
-func WriteToInterface(res interface{}, v interface{}) error {
-	x := reflect.ValueOf(v)
-	if x.Kind() == reflect.Ptr {
-		x = x.Elem()
-	}
-	reflect.ValueOf(res).Elem().Set(x)
-	return nil
-}
-
+// NewTWLock return TWLock
 func NewTWLock(c CacheStore, o ResourceFunc) *TWLock {
 	return &TWLock{
 		cacheFunc:  c,
@@ -33,6 +28,7 @@ func NewTWLock(c CacheStore, o ResourceFunc) *TWLock {
 	}
 }
 
+// TWLock handle the request and control responce from cache or origin
 type TWLock struct {
 	cacheFunc  CacheStore
 	originFunc ResourceFunc
@@ -41,12 +37,12 @@ type TWLock struct {
 	mux        *sync.Mutex              // Mutex for access originLock
 }
 
-// Request Sequence
-func (l *TWLock) In(ctx context.Context, req Named, res interface{}) error {
-	// get cache group
+// Serve is controll request and responce
+func (l *TWLock) Serve(ctx context.Context, req Named, res interface{}) error {
+	// get request identity
 	grName := req.Name()
 
-	// create cache lock
+	// check and create cache lock
 	cl, ok := l.cacheLock[grName]
 	if !ok {
 		l.mux.Lock()
@@ -84,6 +80,7 @@ func (l *TWLock) In(ctx context.Context, req Named, res interface{}) error {
 		cl.RUnlock()
 		break
 	}
+
 	// Request to Origin
 	cl.Lock()
 	defer func() {

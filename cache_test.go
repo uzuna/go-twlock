@@ -30,7 +30,7 @@ func TestCache(t *testing.T) {
 		}
 		ctx := context.Background()
 		var res WaitReply
-		err := l.In(ctx, req, &res)
+		err := l.Serve(ctx, req, &res)
 		// log.Println(res)
 		if err != nil && !res.atTime.IsZero() {
 			log.Println(res, err)
