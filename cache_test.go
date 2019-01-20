@@ -66,6 +66,49 @@ func TestCache(t *testing.T) {
 	assert.Equal(t, split+1, o.counter)
 }
 
+func BenchmarkTWLock(b *testing.B) {
+	length := b.N
+	split := 10
+	cacheLifeCount := length / split
+
+	// cache option
+	var opts []twlock.MemoryCacheOption
+
+	opts = append(opts,
+		twlock.WithLifeCount(cacheLifeCount),
+		twlock.WithLifeTime(time.Millisecond*900),
+	)
+
+	c := twlock.NewMemoryRequest(opts...)
+	o := &CopyOrigin{
+		mutex: new(sync.Mutex),
+	}
+	l := twlock.NewTWLock(c, o.Get)
+
+	wg := &sync.WaitGroup{}
+	f := func(i int) {
+		defer wg.Done()
+		req := &waitRequest{
+			name: "X",
+			wait: time.Millisecond,
+		}
+		ctx := context.Background()
+		var res WaitReply
+		err := l.Serve(ctx, req, &res)
+		// log.Println(res)
+		if err != nil && !res.atTime.IsZero() {
+			b.Fail()
+		}
+	}
+
+	// ogirinCountExpect := length / cacheLifeCount
+	for i := 0; i < length; i++ {
+		wg.Add(1)
+		go f(i)
+	}
+	wg.Wait()
+}
+
 type waitRequest struct {
 	name string
 	wait time.Duration

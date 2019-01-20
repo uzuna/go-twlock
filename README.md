@@ -27,11 +27,11 @@ BG[Back Gate]
 AS[After Sequence]
 R[Return]
 
-FG --through--> CR
+FG --Read　Lock--> CR
 FG --Wait-->FG
 CR --No Hit--> FL
 CR --Hit--> R
-FL --through-->BG
+FL --Lock-->BG
 BG --> OR
 BG --when locked--> FG
 OR -->AS

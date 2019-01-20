@@ -93,6 +93,8 @@ func (l *TWLock) Serve(ctx context.Context, req Named, res interface{}) error {
 	// origin route確認
 	ok, err := l.originFunc(ctx, req, res)
 	if err != nil {
+		// @todo error発生時におなじジョブが流れるのを許すかどうか
+		// 再開可能にするとしたらどれだけ時間を空けるか
 		return err
 	}
 	if !ok {
