@@ -1,0 +1,11 @@
+language: go
+
+go:
+  - "1.10.x"
+
+install:
+  - go get -t -v github.com/stretchr/testify/assert
+
+script:
+  - make test
+  - make bench

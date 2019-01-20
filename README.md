@@ -1,4 +1,4 @@
-## T-Way Lock
+## T-Way Lock [![Build Status](https://travis-ci.com/uzuna/go-twlock.svg?branch=master)](https://travis-ci.com/uzuna/go-twlock)
 
 仮の名前。
 ここではあるリクエストを受けた時にCacheに振るか再取得を行うかといった
