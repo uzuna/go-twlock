@@ -12,7 +12,7 @@ type Named interface {
 
 type MemoryCacheOption func(o *MemoryCache)
 
-func NewMemoryRequest(opts ...MemoryCacheOption) *MemoryCache {
+func NewMemoryCache(opts ...MemoryCacheOption) *MemoryCache {
 	c := &MemoryCache{
 		data:        make(map[string]interface{}),
 		cacheLock:   new(sync.RWMutex),
