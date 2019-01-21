@@ -25,7 +25,7 @@ func TestCache(t *testing.T) {
 		twlock.WithLifeTime(time.Millisecond*900),
 	)
 
-	c := twlock.NewMemoryRequest(opts...)
+	c := twlock.NewMemoryCache(opts...)
 	o := &CopyOrigin{
 		mutex: new(sync.Mutex),
 	}
@@ -79,7 +79,7 @@ func BenchmarkTWLock(b *testing.B) {
 		twlock.WithLifeTime(time.Millisecond*900),
 	)
 
-	c := twlock.NewMemoryRequest(opts...)
+	c := twlock.NewMemoryCache(opts...)
 	o := &CopyOrigin{
 		mutex: new(sync.Mutex),
 	}
